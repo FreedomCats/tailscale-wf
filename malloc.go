@@ -25,6 +25,9 @@ type arena struct {
 
 const slabSize = 4096
 
+// ptrAlign is the alignment of every allocation returned by Alloc.
+const ptrAlign = unsafe.Alignof(uintptr(0))
+
 // grow adds a new slab to the allocator and handles future calls to
 // alloc/calloc out of it.
 func (a *arena) grow() {
@@ -45,6 +48,11 @@ func (a *arena) Alloc(length uintptr) unsafe.Pointer {
 	if length == 0 {
 		panic("can't allocate zero bytes")
 	}
+	// Round up so every allocation stays pointer-aligned. The structs
+	// written into the arena contain pointers, and while the GC is marking,
+	// typedmemmove runs bulkBarrierPreWrite, which throws a fatal
+	// "unaligned arguments" error for a misaligned destination.
+	length = (length + ptrAlign - 1) &^ (ptrAlign - 1)
 	if length > a.remaining {
 		a.grow()
 	}
